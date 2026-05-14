@@ -50,3 +50,20 @@ Security & Production
 Integration
 
 Call these endpoints from the Flutter signup flow (e.g., when user taps "Send OTP" and when verifying). After successful `/verify-otp` return, proceed with signup and navigation.
+
+Vercel Deployment Notes
+
+- To deploy this backend to Vercel as serverless functions, set the project root to the `backend` folder in the Vercel dashboard or CLI.
+- This repository includes an `api/index.js` wrapper that uses `serverless-http` to run the Express `app` as a single function. Socket.io is disabled in serverless mode.
+- Ensure you configure the following Environment Variables in Vercel: `MONGODB_URI`, `MONGODB_DBNAME`, `JWT_SECRET`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, and optionally `TWILIO_VERIFY_SERVICE_SID`.
+- Example Vercel CLI deployment (from repo root):
+
+```bash
+# Install dependencies in backend folder
+cd backend
+npm install
+# Deploy (set project root to backend when prompted or use --cwd)
+npx vercel --prod
+```
+
+If you prefer a long-running Node server (to support WebSockets), consider using Render, Railway, or Fly which support persistent processes. Vercel functions are stateless and do not keep WebSocket connections open.
