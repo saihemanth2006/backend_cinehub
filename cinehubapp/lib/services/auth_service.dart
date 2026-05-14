@@ -1,6 +1,6 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, File;
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -232,4 +232,56 @@ class AuthService {
       rethrow;
     }
   }
+
+  /// Upload media file to backend and return the URL
+  Future<String?> uploadMediaFile(String filePath, String filename) async {
+    if (token == null) return null;
+    try {
+      final file = File(filePath);
+      final bytes = await file.readAsBytes();
+      final base64File = base64Encode(bytes);
+      
+      final ext = filename.toLowerCase().split('.').last;
+      const mimeTypes = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'mp4': 'video/mp4',
+        'mov': 'video/quicktime',
+        'avi': 'video/x-msvideo',
+        'webm': 'video/webm',
+      };
+      final mimetype = mimeTypes[ext] ?? 'application/octet-stream';
+
+      final uri = Uri.parse('$_baseUrl/api/upload');
+      final body = jsonEncode({
+        'file': base64File,
+        'filename': filename,
+        'mimetype': mimetype,
+      });
+
+      final resp = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: body,
+      );
+
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final parsed = jsonDecode(resp.body);
+        if (parsed is Map && parsed['ok'] == true && parsed['url'] != null) {
+          return parsed['url'].toString();
+        }
+      }
+
+      throw Exception('Upload failed: ${resp.statusCode}');
+    } catch (e) {
+      rethrow;
+    }
+  }
 }
+

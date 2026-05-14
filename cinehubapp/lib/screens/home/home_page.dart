@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'dart:math';
 import 'dart:async';
 import '../../models/models.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/media_viewer.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  DESIGN TOKENS
@@ -988,6 +990,9 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   final _ctrl = TextEditingController();
   String _selectedGenre = 'Drama';
   bool _addMedia = false;
+  final List<String> _selectedMediaPaths = [];
+  final List<String> _uploadedMediaUrls = [];
+  bool _uploading = false;
 
   static const _genres = [
     'Drama', 'Thriller', 'Documentary', 'Sci-Fi',
@@ -998,6 +1003,65 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickMedia() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'avi', 'webm'],
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (file.path == null) return;
+
+        setState(() => _uploading = true);
+
+        try {
+          final auth = AuthService();
+          final url = await auth.uploadMediaFile(file.path!, file.name);
+          
+          if (url != null) {
+            setState(() {
+              _uploadedMediaUrls.add(url);
+              _addMedia = true;
+              _uploading = false;
+            });
+          } else {
+            setState(() => _uploading = false);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to upload media')),
+              );
+            }
+          }
+        } catch (e) {
+          setState(() => _uploading = false);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Upload error: $e')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  void _removeMedia(int index) {
+    setState(() {
+      _uploadedMediaUrls.removeAt(index);
+      if (_uploadedMediaUrls.isEmpty) {
+        _addMedia = false;
+      }
+    });
   }
 
   @override
@@ -1148,7 +1212,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
                   // Add media row
                   GestureDetector(
-                    onTap: () => setState(() => _addMedia = !_addMedia),
+                    onTap: _uploading ? null : _pickMedia,
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
@@ -1164,43 +1228,140 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                         ),
                       ),
                       child: Row(children: [
-                        Icon(
-                          _addMedia
-                              ? Icons.photo_rounded
-                              : Icons.add_photo_alternate_outlined,
-                          color:
-                              _addMedia ? _C.accentSoft : _C.textSec,
-                          size: 20,
-                        ),
+                        _uploading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Icon(
+                                _addMedia
+                                    ? Icons.photo_rounded
+                                    : Icons.add_photo_alternate_outlined,
+                                color: _addMedia ? _C.accentSoft : _C.textSec,
+                                size: 20,
+                              ),
                         const SizedBox(width: 10),
-                        Text(
-                          _addMedia
-                              ? 'Media attached'
-                              : 'Add photo / video',
-                          style: TextStyle(
-                              color: _addMedia
-                                  ? _C.accentSoft
-                                  : _C.textSec,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _addMedia
+                                    ? 'Media attached (${_uploadedMediaUrls.length})'
+                                    : 'Add photo / video',
+                                style: TextStyle(
+                                    color: _addMedia ? _C.accentSoft : _C.textSec,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                              if (_uploadedMediaUrls.isNotEmpty)
+                                Text(
+                                  'Tap to change',
+                                  style: TextStyle(
+                                    color: _C.textMuted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                        const Spacer(),
                         if (_addMedia)
                           const Icon(Icons.check_circle_rounded,
                               color: _C.accent, size: 18),
                       ]),
                     ),
                   ),
+                  
+                  // Media preview
+                  if (_uploadedMediaUrls.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 120,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _uploadedMediaUrls.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final url = _uploadedMediaUrls[index];
+                          final isVideo = url.toLowerCase().endsWith('.mp4') ||
+                              url.toLowerCase().endsWith('.mov') ||
+                              url.toLowerCase().endsWith('.webm');
+                          return Container(
+                            width: 120,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF1A1A2E),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  isVideo
+                                      ? Container(
+                                          color: Colors.black,
+                                          child: const Center(
+                                            child: Icon(
+                                              Icons.play_circle_outline,
+                                              color: Colors.white,
+                                              size: 40,
+                                            ),
+                                          ),
+                                        )
+                                      : Image.network(
+                                          '${AuthService()._baseUrl}$url',
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              Container(
+                                            color: Colors.grey[800],
+                                            child: const Icon(
+                                              Icons.broken_image,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        ),
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: GestureDetector(
+                                      onTap: () => _removeMedia(index),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black54,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 28),
 
                   // Post button
                   GestureDetector(
-                    onTap: () async {
+                    onTap: _uploading ? null : () async {
                       HapticFeedback.mediumImpact();
                       setState(() {});
                       final content = _ctrl.text.trim();
-                      if (content.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Write something to post')));
+                      if (content.isEmpty && _uploadedMediaUrls.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Write something or add media to post')));
                         return;
                       }
                       // show a small loading indicator
@@ -1211,7 +1372,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                       );
                       final auth = AuthService();
                       try {
-                        final created = await auth.createPost(content, media: _addMedia ? [''] : null);
+                        final created = await auth.createPost(content, media: _uploadedMediaUrls);
                         Navigator.pop(context); // close loading
                         if (created != null) {
                           Navigator.pop(context, created);
@@ -1239,7 +1400,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                           ),
                         ],
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1886,7 +2047,9 @@ class _InstagramPostState extends State<_InstagramPost>
                     onDoubleTap: _doubleTapLike,
                     child: Stack(alignment: Alignment.center, children: [
                       _PostMedia(
-                          label: p.imageLabel!, accent: p.avatarColor),
+                          label: p.imageLabel!, 
+                          accent: p.avatarColor,
+                          baseUrl: AuthService()._baseUrl),
                       if (_showHeart)
                         ScaleTransition(
                           scale: _heartScale,
@@ -2031,7 +2194,8 @@ class _InstagramPostState extends State<_InstagramPost>
 class _PostMedia extends StatefulWidget {
   final String label;
   final Color accent;
-  const _PostMedia({required this.label, required this.accent});
+  final String baseUrl;
+  const _PostMedia({required this.label, required this.accent, required this.baseUrl});
 
   @override
   State<_PostMedia> createState() => _PostMediaState();
@@ -2058,6 +2222,13 @@ class _PostMediaState extends State<_PostMedia>
     super.dispose();
   }
 
+  bool get _isVideo {
+    return widget.label.toLowerCase().endsWith('.mp4') ||
+        widget.label.toLowerCase().endsWith('.mov') ||
+        widget.label.toLowerCase().endsWith('.webm') ||
+        widget.label.toLowerCase().endsWith('.avi');
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -2071,60 +2242,112 @@ class _PostMediaState extends State<_PostMedia>
         child: SizedBox(
           width: double.infinity,
           height: 300,
-          child: Stack(children: [
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    widget.accent.withOpacity(0.18),
-                    const Color(0xFF080812),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(children: [
+              // Media display
+              _buildMediaContent(),
+              // Overlay gradient
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.3),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
                 ),
               ),
-            ),
-            Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: _FilmStrip(accent: widget.accent)),
-            Positioned.fill(
-                child: CustomPaint(painter: _GrainPainter())),
-            Center(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
-                width: _playing ? 56 : 64,
-                height: _playing ? 56 : 64,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _playing
-                      ? widget.accent
-                      : widget.accent.withOpacity(0.18),
-                  border: Border.all(
-                      color: widget.accent.withOpacity(0.55),
-                      width: 2),
-                  boxShadow: _playing
-                      ? [
-                          BoxShadow(
-                              color: widget.accent.withOpacity(0.45),
-                              blurRadius: 22)
-                        ]
-                      : [],
+              // Play button for videos
+              if (_isVideo)
+                Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 280),
+                    width: _playing ? 56 : 64,
+                    height: _playing ? 56 : 64,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _playing
+                          ? widget.accent
+                          : widget.accent.withOpacity(0.18),
+                      border: Border.all(
+                          color: widget.accent.withOpacity(0.55),
+                          width: 2),
+                      boxShadow: _playing
+                          ? [
+                              BoxShadow(
+                                  color: widget.accent.withOpacity(0.45),
+                                  blurRadius: 22)
+                            ]
+                          : [],
+                    ),
+                    child: Icon(
+                        _playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 32),
+                  ),
                 ),
-                child: Icon(
-                    _playing
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    color: Colors.white,
+              // Media label overlay
+              Positioned(
+                bottom: 12,
+                left: 12,
+                right: 12,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    widget.label.split('/').last,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 12),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMediaContent() {
+    final url = widget.baseUrl + widget.label;
+    if (_isVideo) {
+      return Container(
+        color: Colors.black,
+        child: MediaViewer(
+          url: widget.label,
+          baseUrl: widget.baseUrl,
+          isVideo: true,
+          fit: BoxFit.cover,
+        ),
+      );
+    } else {
+      return MediaViewer(
+        url: widget.label,
+        baseUrl: widget.baseUrl,
+        isVideo: false,
+        fit: BoxFit.cover,
+      );
+    }
+  }
                     size: 28),
               ),
             ),
             Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
+              bottom = 0,
+              left = 0,
+              right = 0,
+              child = Container(
                 padding: const EdgeInsets.fromLTRB(14, 30, 14, 12),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -2161,9 +2384,9 @@ class _PostMediaState extends State<_PostMedia>
               ),
             ),
             Positioned(
-              top: 30,
-              right: 10,
-              child: Container(
+              top = 30,
+              right = 10,
+              child = Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.45),

@@ -447,6 +447,52 @@ function startServer() {
       console.warn('Social routes not loaded at server start:', e && e.message ? e.message : e);
     }
 
+  // --- Media Upload Endpoints ---
+  const { FileStorage, uploadsDir } = require('./upload-handler');
+  const fs = require('fs');
+  const path = require('path');
+  const fileStorage = new FileStorage();
+
+  // Endpoint to upload media files (used by mobile app)
+  app.post('/api/upload', authenticateToken, (req, res) => {
+    try {
+      // Handle base64 encoded files from mobile
+      const { file, filename, mimetype } = req.body || {};
+      if (!file || !filename || !mimetype) {
+        return res.status(400).json({ ok: false, error: 'file, filename, and mimetype required' });
+      }
+
+      const buffer = Buffer.from(file, 'base64');
+      const fileUrl = fileStorage.saveBuffer(buffer, mimetype, filename);
+      return res.json({ ok: true, url: fileUrl, filename });
+    } catch (e) {
+      console.error('Upload error:', e && e.message ? e.message : e);
+      return res.status(400).json({ ok: false, error: e.message || 'upload_failed' });
+    }
+  });
+
+  // Endpoint to retrieve uploaded media
+  app.get('/api/media/:filename', (req, res) => {
+    try {
+      const { filename } = req.params;
+      const filePath = path.join(uploadsDir, filename);
+      
+      // Security: prevent directory traversal
+      if (!filePath.startsWith(uploadsDir)) {
+        return res.status(403).json({ ok: false, error: 'forbidden' });
+      }
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ ok: false, error: 'not_found' });
+      }
+
+      res.sendFile(filePath);
+    } catch (e) {
+      console.error('Media retrieval error:', e && e.message ? e.message : e);
+      return res.status(500).json({ ok: false, error: 'retrieval_failed' });
+    }
+  });
+
   server.listen(port, () => {
     console.log(`CineHub OTP backend listening on ${port}`);
   });
