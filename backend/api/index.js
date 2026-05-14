@@ -1,29 +1,36 @@
-// Robust serverless wrapper: attempt to require the app at startup, but if that
-// fails, respond with a lightweight fallback so the deployment stays healthy.
-const serverless = require('serverless-http');
-let handler = null;
-try {
-	// require the exported Express app (server.js exports the app)
-	const app = require('../server');
-	handler = serverless(app);
-	console.log('Serverless handler initialized');
-} catch (e) {
-	console.error('Serverless initialization warning:', e && e.stack ? e.stack : e);
-	handler = null;
+// Fully lazy serverless wrapper: do not require app or serverless-http at module
+// load time. Instead, initialize on first request to avoid crashes caused by
+// synchronous exceptions during module import in Vercel's runtime.
+let initPromise = null;
+let delegatedHandler = null;
+
+async function initHandler() {
+	if (delegatedHandler || initPromise) return initPromise;
+	initPromise = (async () => {
+		try {
+			const serverless = require('serverless-http');
+			const app = require('../server');
+			delegatedHandler = serverless(app);
+			console.log('Serverless handler lazily initialized');
+			return delegatedHandler;
+		} catch (err) {
+			console.error('Lazy initialization failed:', err && err.stack ? err.stack : err);
+			delegatedHandler = null;
+			return null;
+		}
+	})();
+	return initPromise;
 }
 
-// Export a function that dispatches to the initialized handler when available,
-// otherwise returns a safe fallback response. This keeps the function warm
-// and responsive while we gather logs and fix the root cause.
 module.exports = async (req, res) => {
 	try {
-		if (handler) {
-			// delegate to serverless-http handler
-			return handler(req, res);
+		await initHandler();
+		if (delegatedHandler) {
+			return delegatedHandler(req, res);
 		}
-	} catch (e) {
-		console.error('Runtime handler error:', e && e.stack ? e.stack : e);
+	} catch (err) {
+		console.error('Error while invoking delegated handler:', err && err.stack ? err.stack : err);
 	}
-	// Lightweight fallback
-	res.status(200).json({ ok: true, message: 'CineHub backend (limited fallback) - initialization issue detected' });
+	// Safe fallback so the function always responds instead of crashing.
+	res.status(200).json({ ok: false, message: 'Backend initialization error (fallback response). Check function logs.' });
 };
