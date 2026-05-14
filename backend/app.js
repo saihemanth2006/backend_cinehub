@@ -18,21 +18,42 @@ if (accountSid && authToken) {
 }
 
 // Mongoose and models (loaded if available)
+// Defer loading heavy DB/models until actually needed in a request.
 let mongoose = null;
 let User = null;
-try {
-  mongoose = require('mongoose');
-  User = require('./models/User');
+let Follow, Post, Like, Comment, Conversation, Message;
+
+async function ensureModels() {
+  if (User && mongoose) return true;
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) return false;
   try {
-    var Follow = require('./models/Follow');
-    var Post = require('./models/Post');
-    var Like = require('./models/Like');
-    var Comment = require('./models/Comment');
-    var Conversation = require('./models/Conversation');
-    var Message = require('./models/Message');
-  } catch (e) { }
-} catch (e) {
-  console.warn('Mongoose not installed or failed to load:', e && e.message ? e.message : e);
+    mongoose = require('mongoose');
+    // Connect lazily if not already connected
+    if (mongoose.connection && mongoose.connection.readyState === 0) {
+      const dbName = process.env.MONGODB_DBNAME || 'cine_hub';
+      await mongoose.connect(mongoUri, { dbName, useNewUrlParser: true, useUnifiedTopology: true });
+      console.log('Connected to MongoDB (lazy)');
+    }
+    // require models after mongoose is available
+    User = require('./models/User');
+    try {
+      Follow = require('./models/Follow');
+      Post = require('./models/Post');
+      Like = require('./models/Like');
+      Comment = require('./models/Comment');
+      Conversation = require('./models/Conversation');
+      Message = require('./models/Message');
+    } catch (e) {
+      // some social models may be absent; that's fine
+    }
+    return true;
+  } catch (e) {
+    console.warn('Lazy model init failed:', e && e.message ? e.message : e);
+    mongoose = null;
+    User = null;
+    return false;
+  }
 }
 
 // In-memory stores (simple dev fallback)
@@ -107,7 +128,8 @@ function authenticateToken(req, res, next) {
 
 app.post('/login', async (req, res) => {
   try {
-    if (!User) return res.status(500).json({ ok: false, error: 'mongodb_not_configured' });
+    const ok = await ensureModels();
+    if (!ok) return res.status(500).json({ ok: false, error: 'mongodb_not_configured' });
     const { identifier, password } = req.body || {}; if (!identifier || !password) return res.status(400).json({ ok: false, error: 'identifier_and_password_required' });
     let query = {}; const asPhone = normalizePhone(identifier); if (asPhone && /^\+\d+$/.test(asPhone)) { query = { phone: asPhone }; } else if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(identifier)) { query = { email: identifier.toLowerCase() }; } else { query = { username: identifier }; }
     const user = await User.findOne(query).lean(); if (!user) return res.status(401).json({ ok: false, error: 'invalid_credentials' });
@@ -121,19 +143,57 @@ app.post('/logout', authenticateToken, (req, res) => {
 });
 
 app.get('/me', authenticateToken, async (req, res) => {
-  try { if (!User) return res.status(500).json({ ok: false, error: 'mongodb_not_configured' }); const uid = req.user && req.user.sub; if (!uid) return res.status(400).json({ ok: false, error: 'invalid_token_payload' }); const user = await User.findById(uid).lean(); if (!user) return res.status(404).json({ ok: false, error: 'user_not_found' }); const safeUser = { _id: user._id, fullName: user.fullName, email: user.email, username: user.username, phone: user.phone, role: user.role }; return res.json({ ok: true, user: safeUser }); } catch (e) { console.error('me error:', e && e.message ? e.message : e); return res.status(500).json({ ok: false, error: 'internal_error' }); }
+  try {
+    const ok = await ensureModels();
+    if (!ok) return res.status(500).json({ ok: false, error: 'mongodb_not_configured' });
+    const uid = req.user && req.user.sub;
+    if (!uid) return res.status(400).json({ ok: false, error: 'invalid_token_payload' });
+    const user = await User.findById(uid).lean();
+    if (!user) return res.status(404).json({ ok: false, error: 'user_not_found' });
+    const safeUser = { _id: user._id, fullName: user.fullName, email: user.email, username: user.username, phone: user.phone, role: user.role };
+    return res.json({ ok: true, user: safeUser });
+  } catch (e) {
+    console.error('me error:', e && e.message ? e.message : e);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
 });
 
 app.post('/register', async (req, res) => {
-  try { if (!User) return res.status(500).json({ ok: false, error: 'mongodb_not_configured' }); const { fullName, email, username, password, phone, role, otp } = req.body; console.log('Register request payload:', { fullName, email, username, phone, role }); if (!phone) return res.status(400).json({ ok: false, error: 'phone required' }); if (!otp) return res.status(400).json({ ok: false, error: 'otp required' }); const toPhone = normalizePhone(phone); const errors = []; if (password) { if (password.length < 6) errors.push('password must be at least 6 characters'); if (!/[!@#\$%\^&\*(),.?":{}|<>]/.test(password)) errors.push('password must contain a special character'); } else { errors.push('password required'); } if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.push('invalid email'); if (errors.length) { console.warn('Register validation failed:', errors); return res.status(400).json({ ok: false, error: 'validation_failed', details: errors }); }
-    let otpVerified = false; const vExpires = verifiedPhones.get(toPhone); if (vExpires && Date.now() <= vExpires) { otpVerified = true; verifiedPhones.delete(toPhone); }
-    if (!otpVerified) { if (twilioClient && verifyServiceSid) { try { const check = await twilioClient.verify.v2.services(verifyServiceSid).verificationChecks.create({ to: toPhone, code: otp }); if (check && check.status === 'approved') otpVerified = true; } catch (e) { console.warn('Twilio verify check error during register:', e && e.message ? e.message : e); } } }
+  try {
+    const ok = await ensureModels();
+    if (!ok) return res.status(500).json({ ok: false, error: 'mongodb_not_configured' });
+    const { fullName, email, username, password, phone, role, otp } = req.body;
+    console.log('Register request payload:', { fullName, email, username, phone, role });
+    if (!phone) return res.status(400).json({ ok: false, error: 'phone required' });
+    if (!otp) return res.status(400).json({ ok: false, error: 'otp required' });
+    const toPhone = normalizePhone(phone);
+    const errors = [];
+    if (password) {
+      if (password.length < 6) errors.push('password must be at least 6 characters');
+      if (!/[!@#\$%\^&\*(),.?":{}|<>]/.test(password)) errors.push('password must contain a special character');
+    } else {
+      errors.push('password required');
+    }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.push('invalid email');
+    if (errors.length) { console.warn('Register validation failed:', errors); return res.status(400).json({ ok: false, error: 'validation_failed', details: errors }); }
+
+    let otpVerified = false;
+    const vExpires = verifiedPhones.get(toPhone);
+    if (vExpires && Date.now() <= vExpires) { otpVerified = true; verifiedPhones.delete(toPhone); }
+    if (!otpVerified) {
+      if (twilioClient && verifyServiceSid) {
+        try { const check = await twilioClient.verify.v2.services(verifyServiceSid).verificationChecks.create({ to: toPhone, code: otp }); if (check && check.status === 'approved') otpVerified = true; } catch (e) { console.warn('Twilio verify check error during register:', e && e.message ? e.message : e); }
+      }
+    }
     if (!otpVerified) { const entry = otps.get(toPhone); if (entry && entry.code === otp && Date.now() <= entry.expiresAt) { otpVerified = true; otps.delete(toPhone); } }
     if (!otpVerified) { console.warn('OTP not verified for', toPhone); return res.status(400).json({ ok: false, error: 'otp_not_verified' }); }
+
     const update = { fullName: fullName || undefined, email: email || undefined, username: username || undefined, role: role || undefined, updatedAt: Date.now(), phone: toPhone };
     if (password) { try { const bcrypt = require('bcryptjs'); const salt = bcrypt.genSaltSync(10); update.passwordHash = bcrypt.hashSync(password, salt); } catch (e) { console.warn('bcrypt not installed or failed to load:', e && e.message ? e.message : e); } }
     const opts = { upsert: true, new: true, setDefaultsOnInsert: true };
-    const user = await User.findOneAndUpdate({ phone: toPhone }, update, opts).lean(); console.log('User upserted:', { phone: user && user.phone, id: user && user._id }); return res.json({ ok: true, user });
+    const user = await User.findOneAndUpdate({ phone: toPhone }, update, opts).lean();
+    console.log('User upserted:', { phone: user && user.phone, id: user && user._id });
+    return res.json({ ok: true, user });
   } catch (e) { console.error('Register error:', e && e.message ? e.message : e); return res.status(500).json({ ok: false, error: 'register_failed' }); }
 });
 
