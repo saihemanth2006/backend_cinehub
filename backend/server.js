@@ -7,7 +7,7 @@ const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const fromNumber = process.env.TWILIO_PHONE_NUMBER;
 const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID; // optional: use Twilio Verify
-const port = process.env.PORT || 4000;
+const port = process.env.PORT ? Number(process.env.PORT) : undefined;
 const otpTtl = parseInt(process.env.OTP_TTL_SECONDS || '300', 10);
 const jwtSecret = process.env.JWT_SECRET || 'dev_jwt_secret_change_me';
 
@@ -493,14 +493,17 @@ function startServer() {
     }
   });
 
-  server.listen(port, () => {
-    console.log(`CineHub OTP backend listening on ${port}`);
+  const listenPort = port || 0; // 0 lets the OS pick a free port when none configured
+  server.listen(listenPort, function() {
+    const addr = server.address && server.address();
+    const actualPort = addr && addr.port;
+    console.log(`CineHub OTP backend listening on ${actualPort}${port ? ` (configured PORT=${port})` : ' (no PORT configured; OS-assigned)'}`);
   });
 
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
-      console.error(`Port ${port} is already in use. Another process is listening on this port.`);
-      console.error('Use: netstat -ano | findstr :' + port + '  and taskkill /PID <pid> /F to free the port.');
+      console.error(`Port ${port || '(unspecified)'} is already in use. Another process is listening on this port.`);
+      if (port) console.error('Use: netstat -ano | findstr :' + port + '  and taskkill /PID <pid> /F to free the port.');
       process.exit(1);
     }
     console.error('Server error:', err);
