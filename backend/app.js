@@ -7,6 +7,17 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// Graceful JSON parse error handler: return JSON error instead of HTML error page
+// when a client sends invalid JSON. This helps the frontend handle errors
+// consistently instead of receiving an HTML error page.
+app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    console.warn('Invalid JSON received:', err && err.message ? err.message : err);
+    return res.status(400).json({ ok: false, error: 'invalid_json', message: err.message });
+  }
+  next(err);
+});
+
 // Twilio config (may be undefined in local/dev without .env)
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
