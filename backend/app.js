@@ -143,7 +143,29 @@ app.post('/api/upload', authenticateToken, (req, res) => {
 });
 
 app.get('/api/media/:filename', (req, res) => {
-  try { const { filename } = req.params; const filePath = path.join(uploadsDir, filename); if (!filePath.startsWith(uploadsDir)) { return res.status(403).json({ ok: false, error: 'forbidden' }); } if (!fs.existsSync(filePath)) { return res.status(404).json({ ok: false, error: 'not_found' }); } res.sendFile(filePath); } catch (e) { console.error('Media retrieval error:', e && e.message ? e.message : e); return res.status(500).json({ ok: false, error: 'retrieval_failed' }); }
+  try {
+    const { filename } = req.params;
+    const fileId = path.basename(filename, path.extname(filename));
+    const entry = fileStorage.getFile(fileId);
+    if (entry) {
+      if (entry.path && fs.existsSync(entry.path)) {
+        return res.sendFile(entry.path);
+      }
+      if (entry.buffer) {
+        res.setHeader('Content-Type', entry.mimetype || 'application/octet-stream');
+        return res.send(entry.buffer);
+      }
+    }
+
+    // Fallback: attempt to serve from uploadsDir (if present on disk)
+    const filePath = path.join(uploadsDir, filename);
+    if (!filePath.startsWith(uploadsDir)) return res.status(403).json({ ok: false, error: 'forbidden' });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ ok: false, error: 'not_found' });
+    return res.sendFile(filePath);
+  } catch (e) {
+    console.error('Media retrieval error:', e && e.message ? e.message : e);
+    return res.status(500).json({ ok: false, error: 'retrieval_failed' });
+  }
 });
 
 // Export app and a helper to start a standalone HTTP server for local runs
