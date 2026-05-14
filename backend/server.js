@@ -32,7 +32,8 @@ app.use(bodyParser.json());
 // --- MongoDB (Mongoose) setup ---
 let mongoose = null;
 let User = null;
-const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://hemanth:cinehub@cluster0.astjpnx.mongodb.net';
+// MongoDB connection URI must be provided via environment variable in production.
+const mongoUri = process.env.MONGODB_URI; // example: mongodb+srv://user:pass@cluster0.mongodb.net
 try {
   mongoose = require('mongoose');
   User = require('./models/User');
