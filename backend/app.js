@@ -291,4 +291,15 @@ function startStandalone() {
   });
 }
 
-module.exports = { app, startStandalone, mongoose, mongoUri: process.env.MONGODB_URI };
+// Export the Express app as the module default to satisfy serverless platforms
+// that expect the module export to be a function/server. Attach helpers as
+// properties on the `app` object so local `server.js` can still access them.
+try {
+  app.startStandalone = startStandalone;
+  app._mongoose = () => mongoose;
+  app._mongoUri = process.env.MONGODB_URI;
+  module.exports = app;
+} catch (e) {
+  // In case of any issue attaching properties, fall back to previous shape.
+  module.exports = { app, startStandalone, mongoose, mongoUri: process.env.MONGODB_URI };
+}

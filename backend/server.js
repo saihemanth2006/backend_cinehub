@@ -1,5 +1,10 @@
 // Lightweight launcher for local runs. The main Express app is in app.js
-const { app, startStandalone } = require('./app');
+const appModule = require('./app');
+// Support two export shapes:
+// - previous: { app, startStandalone, ... }
+// - new: default export is the Express `app` with helper properties attached
+const app = (appModule && appModule.app) ? appModule.app : appModule;
+const startStandalone = (appModule && appModule.startStandalone) ? appModule.startStandalone : (app && app.startStandalone) ? app.startStandalone : null;
 
 // When run directly, attempt DB connect (if configured) then start HTTP server
 if (require.main === module) {
@@ -9,11 +14,11 @@ if (require.main === module) {
     const dbName = process.env.MONGODB_DBNAME || 'cine_hub';
     const connectOpts = { dbName, useNewUrlParser: true, useUnifiedTopology: true, serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000 };
     mongoose.connect(mongoUri, connectOpts)
-      .then(() => { console.log(`Connected to MongoDB database: ${dbName}`); startStandalone(); })
-      .catch(err => { console.warn('MongoDB connection warning:', err && err.message ? err.message : err); console.warn('The server will still start, but requests requiring MongoDB may fail.'); startStandalone(); });
+      .then(() => { console.log(`Connected to MongoDB database: ${dbName}`); if (typeof startStandalone === 'function') startStandalone(); })
+      .catch(err => { console.warn('MongoDB connection warning:', err && err.message ? err.message : err); console.warn('The server will still start, but requests requiring MongoDB may fail.'); if (typeof startStandalone === 'function') startStandalone(); });
   } else {
     console.warn('MONGODB_URI not provided; starting server without DB connection.');
-    startStandalone();
+    if (typeof startStandalone === 'function') startStandalone();
   }
 }
 
