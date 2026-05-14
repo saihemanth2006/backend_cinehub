@@ -57,6 +57,14 @@ if (!accountSid || !authToken || !fromNumber) {
   console.warn('TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN or TWILIO_PHONE_NUMBER not set. Please set them in .env');
 }
 
+// Global error handlers to surface uncaught errors in serverless logs
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason && reason.stack ? reason.stack : reason);
+});
+
 app.post('/send-otp', async (req, res) => {
   try {
     const { phone } = req.body; if (!phone) return res.status(400).json({ ok: false, error: 'phone required' });
