@@ -18,6 +18,26 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
+// Ensure error responses always return JSON even if a route called res.status(code).end()
+app.use((req, res, next) => {
+  const origEnd = res.end.bind(res);
+  res.end = function (chunk, encoding, callback) {
+    try {
+      const status = res.statusCode || 200;
+      const hasBody = chunk && chunk.length > 0;
+      if (!hasBody && status >= 400) {
+        const payload = JSON.stringify({ ok: false, error: res.statusMessage || 'error', status });
+        if (!res.getHeader('Content-Type')) res.setHeader('Content-Type', 'application/json');
+        return origEnd(payload, encoding, callback);
+      }
+    } catch (e) {
+      // fall through to original end
+    }
+    return origEnd(chunk, encoding, callback);
+  };
+  next();
+});
+
 // Twilio config (may be undefined in local/dev without .env)
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -142,9 +162,14 @@ function authenticateToken(req, res, next) {
 
 app.post('/login', async (req, res) => {
   try {
+    // Debug logging to help diagnose production body-parsing / header issues
+    try { console.log('LOGIN request headers:', JSON.stringify(req.headers)); } catch (e) { console.log('LOGIN headers log failed'); }
+    try { console.log('LOGIN request body:', JSON.stringify(req.body)); } catch (e) { console.log('LOGIN body log failed'); }
+
     const ok = await ensureModels();
     if (!ok) return res.status(500).json({ ok: false, error: 'mongodb_not_configured' });
-    const { identifier, password } = req.body || {}; if (!identifier || !password) return res.status(400).json({ ok: false, error: 'identifier_and_password_required' });
+    const { identifier, password } = req.body || {};
+    if (!identifier || !password) return res.status(400).json({ ok: false, error: 'identifier_and_password_required' });
     let query = {}; const asPhone = normalizePhone(identifier); if (asPhone && /^\+\d+$/.test(asPhone)) { query = { phone: asPhone }; } else if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(identifier)) { query = { email: identifier.toLowerCase() }; } else { query = { username: identifier }; }
     const user = await User.findOne(query).lean(); if (!user) return res.status(401).json({ ok: false, error: 'invalid_credentials' });
     try { const bcrypt = require('bcryptjs'); const match = user.passwordHash ? bcrypt.compareSync(password, user.passwordHash) : false; if (!match) return res.status(401).json({ ok: false, error: 'invalid_credentials' }); } catch (e) { console.warn('bcrypt not available for login check:', e && e.message ? e.message : e); return res.status(500).json({ ok: false, error: 'server_error' }); }
