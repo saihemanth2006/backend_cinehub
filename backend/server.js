@@ -382,6 +382,9 @@ app.post('/register', async (req, res) => {
   }
 });
 
+// Root endpoint to handle GET /
+app.get('/', (req, res) => res.json({ ok: true, message: 'CineHub Backend is running' }));
+
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Start server after attempting MongoDB connection so queries don't race before ready

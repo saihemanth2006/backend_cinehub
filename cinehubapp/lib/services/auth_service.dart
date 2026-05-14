@@ -11,7 +11,7 @@ class AuthService {
   Map<String, dynamic>? user;
 
   String get _baseUrl {
-    return 'https://backendcinehub-iota.vercel.app';
+    return 'https://backend-cinehub.vercel.app';
   }
 
   void setFromLogin(dynamic body) {
