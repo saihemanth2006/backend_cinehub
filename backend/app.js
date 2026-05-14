@@ -32,7 +32,10 @@ async function ensureModels() {
     // Connect lazily if not already connected
     if (mongoose.connection && mongoose.connection.readyState === 0) {
       const dbName = process.env.MONGODB_DBNAME || 'cine_hub';
-      await mongoose.connect(mongoUri, { dbName, useNewUrlParser: true, useUnifiedTopology: true });
+      // Use short timeouts for serverless environments so a bad or unreachable
+      // MongoDB URI doesn't block requests for long (fails fast).
+      const connectOpts = { dbName, useNewUrlParser: true, useUnifiedTopology: true, serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000 };
+      await mongoose.connect(mongoUri, connectOpts);
       console.log('Connected to MongoDB (lazy)');
     }
     // require models after mongoose is available
