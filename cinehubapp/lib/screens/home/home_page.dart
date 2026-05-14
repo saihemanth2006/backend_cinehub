@@ -1313,7 +1313,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                                           ),
                                         )
                                       : Image.network(
-                                          '${AuthService()._baseUrl}$url',
+                                          '${AuthService().baseUrl}$url',
                                           fit: BoxFit.cover,
                                           errorBuilder: (_, __, ___) =>
                                               Container(
@@ -2049,7 +2049,7 @@ class _InstagramPostState extends State<_InstagramPost>
                       _PostMedia(
                           label: p.imageLabel!, 
                           accent: p.avatarColor,
-                          baseUrl: AuthService()._baseUrl),
+                          baseUrl: AuthService().baseUrl),
                       if (_showHeart)
                         ScaleTransition(
                           scale: _heartScale,
@@ -2339,67 +2339,6 @@ class _PostMediaState extends State<_PostMedia>
         fit: BoxFit.cover,
       );
     }
-  }
-                    size: 28),
-              ),
-            ),
-            Positioned(
-              bottom = 0,
-              left = 0,
-              right = 0,
-              child = Container(
-                padding: const EdgeInsets.fromLTRB(14, 30, 14, 12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.78)
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-                child: Row(children: [
-                  Expanded(
-                      child: Text(widget.label,
-                          style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5))),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text('2:34',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700)),
-                  ),
-                ]),
-              ),
-            ),
-            Positioned(
-              top = 30,
-              right = 10,
-              child = Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.fullscreen_rounded,
-                    color: Colors.white70, size: 16),
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
   }
 }
 

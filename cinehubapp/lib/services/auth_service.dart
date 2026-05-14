@@ -10,7 +10,7 @@ class AuthService {
   String? token;
   Map<String, dynamic>? user;
 
-  String get _baseUrl {
+  String get baseUrl {
     return 'https://backend-cinehub.vercel.app';
   }
 
@@ -31,7 +31,7 @@ class AuthService {
   Future<Map<String, dynamic>?> fetchMe() async {
     if (token == null) return null;
     try {
-      final uri = Uri.parse('$_baseUrl/me');
+      final uri = Uri.parse('$baseUrl/me');
       final resp = await http.get(uri, headers: {'Authorization': 'Bearer $token'});
       if (resp.statusCode == 200) {
         final body = jsonDecode(resp.body);
@@ -54,7 +54,7 @@ class AuthService {
       return true;
     }
     try {
-      final uri = Uri.parse('$_baseUrl/logout');
+      final uri = Uri.parse('$baseUrl/logout');
       final resp = await http.post(uri, headers: {'Authorization': 'Bearer $token'});
       // regardless of server response, clear local state to log out immediately
       clear();
@@ -75,7 +75,7 @@ class AuthService {
   Future<bool> follow(String toId) async {
     if (token == null) return false;
     try {
-      final uri = Uri.parse('$_baseUrl/api/follow');
+      final uri = Uri.parse('$baseUrl/api/follow');
       final resp = await http.post(uri, headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'}, body: jsonEncode({'to': toId}));
       return resp.statusCode == 200;
     } catch (_) {
@@ -86,7 +86,7 @@ class AuthService {
   Future<bool> unfollow(String toId) async {
     if (token == null) return false;
     try {
-      final uri = Uri.parse('$_baseUrl/api/unfollow');
+      final uri = Uri.parse('$baseUrl/api/unfollow');
       final resp = await http.post(uri, headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'}, body: jsonEncode({'to': toId}));
       return resp.statusCode == 200;
     } catch (_) {
@@ -97,7 +97,7 @@ class AuthService {
   Future<bool> likePost(String postId) async {
     if (token == null) return false;
     try {
-      final uri = Uri.parse('$_baseUrl/api/posts/$postId/like');
+      final uri = Uri.parse('$baseUrl/api/posts/$postId/like');
       final resp = await http.post(uri, headers: {'Authorization': 'Bearer $token'});
       return resp.statusCode == 200;
     } catch (_) {
@@ -108,7 +108,7 @@ class AuthService {
   Future<bool> unlikePost(String postId) async {
     if (token == null) return false;
     try {
-      final uri = Uri.parse('$_baseUrl/api/posts/$postId/like');
+      final uri = Uri.parse('$baseUrl/api/posts/$postId/like');
       final resp = await http.delete(uri, headers: {'Authorization': 'Bearer $token'});
       return resp.statusCode == 200;
     } catch (_) {
@@ -119,7 +119,7 @@ class AuthService {
   /// Fetch feed posts from backend. Returns list of post maps or empty list.
   Future<List<Map<String, dynamic>>> fetchFeed({int page = 1, int limit = 20}) async {
     try {
-      final uri = Uri.parse('$_baseUrl/api/feed?page=$page&limit=$limit');
+      final uri = Uri.parse('$baseUrl/api/feed?page=$page&limit=$limit');
       final headers = <String, String>{'Content-Type': 'application/json'};
       if (token != null) headers['Authorization'] = 'Bearer $token';
       final resp = await http.get(uri, headers: headers);
@@ -142,7 +142,7 @@ class AuthService {
   Future<Map<String, dynamic>?> fetchUserStats(String userId) async {
     if (userId.isEmpty) return null;
     try {
-      final uri = Uri.parse('$_baseUrl/api/users/$userId/stats');
+      final uri = Uri.parse('$baseUrl/api/users/$userId/stats');
       final headers = <String, String>{'Content-Type': 'application/json'};
       if (token != null) headers['Authorization'] = 'Bearer $token';
       final resp = await http.get(uri, headers: headers);
@@ -156,7 +156,7 @@ class AuthService {
 
   Future<List<Map<String, dynamic>>> fetchFollowers(String userId) async {
     try {
-      final uri = Uri.parse('$_baseUrl/api/users/$userId/followers');
+      final uri = Uri.parse('$baseUrl/api/users/$userId/followers');
       final headers = <String, String>{'Content-Type': 'application/json'};
       if (token != null) headers['Authorization'] = 'Bearer $token';
       final resp = await http.get(uri, headers: headers);
@@ -174,7 +174,7 @@ class AuthService {
   /// Fetch all users (basic public info)
   Future<List<Map<String, dynamic>>> fetchAllUsers() async {
     try {
-      final uri = Uri.parse('$_baseUrl/api/users');
+      final uri = Uri.parse('$baseUrl/api/users');
       final headers = <String, String>{'Content-Type': 'application/json'};
       if (token != null) headers['Authorization'] = 'Bearer $token';
       final resp = await http.get(uri, headers: headers);
@@ -191,7 +191,7 @@ class AuthService {
 
   Future<List<Map<String, dynamic>>> fetchFollowing(String userId) async {
     try {
-      final uri = Uri.parse('$_baseUrl/api/users/$userId/following');
+      final uri = Uri.parse('$baseUrl/api/users/$userId/following');
       final headers = <String, String>{'Content-Type': 'application/json'};
       if (token != null) headers['Authorization'] = 'Bearer $token';
       final resp = await http.get(uri, headers: headers);
@@ -210,7 +210,7 @@ class AuthService {
   Future<Map<String, dynamic>?> createPost(String content, {List<String>? media}) async {
     if (token == null) return null;
     try {
-      final uri = Uri.parse('$_baseUrl/api/posts');
+      final uri = Uri.parse('$baseUrl/api/posts');
       final body = jsonEncode({'content': content, 'media': media ?? []});
       final resp = await http.post(uri, headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'}, body: body);
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
@@ -255,7 +255,7 @@ class AuthService {
       };
       final mimetype = mimeTypes[ext] ?? 'application/octet-stream';
 
-      final uri = Uri.parse('$_baseUrl/api/upload');
+      final uri = Uri.parse('$baseUrl/api/upload');
       final body = jsonEncode({
         'file': base64File,
         'filename': filename,
