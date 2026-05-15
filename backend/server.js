@@ -29,6 +29,11 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// Root route to avoid "Cannot GET /" on deployments and provide a simple status
+app.get('/', (req, res) => {
+  res.json({ ok: true, message: 'CineHub backend is running', health: '/health' });
+});
+
 // --- MongoDB (Mongoose) setup ---
 let mongoose = null;
 let User = null;
