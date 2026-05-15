@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+# Environment variables
 # Environment variables
 .env
 .env.local
@@ -49,3 +51,8 @@ logs/
 # Misc
 .env*
 !.env.example
+
+# Project-specific
+/uploads/
+data.sqlite
+
