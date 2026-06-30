@@ -6,10 +6,16 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
+// Ensure uploads directory exists (use /tmp on Vercel since root is read-only)
+const isVercel = !!process.env.VERCEL;
+const uploadsDir = isVercel ? path.join('/tmp', 'uploads') : path.join(__dirname, 'uploads');
+
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Could not create uploads directory (might be read-only on Vercel):', e.message);
 }
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -48,12 +54,12 @@ const transporter = nodemailer.createTransport({
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(uploadsDir));
 
 // Configure Multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/');
+    cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
