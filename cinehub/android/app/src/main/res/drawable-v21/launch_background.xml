@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CineHub cinematic splash (API 21+) — deep dark with centered brand gradient -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Deep dark background matching AppColors.background -->
+    <item android:drawable="@color/cinehub_background" />
+
+    <!-- Subtle radial glow to match in-app splash feel -->
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="320dp"
+                android:centerX="50%"
+                android:centerY="45%"
+                android:startColor="#208B5CF6"
+                android:endColor="#0008080D" />
+            <size android:width="640dp" android:height="640dp" />
+        </shape>
+    </item>
+</layer-list>

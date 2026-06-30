@@ -1,0 +1,16 @@
+// This is a generated file; do not edit or check into version control.
+<<<<<<< HEAD
+FLUTTER_ROOT=Z:\developer\flutter
+FLUTTER_APPLICATION_PATH=G:\github\cinehub
+=======
+FLUTTER_ROOT=C:\src\flutter_windows_3.29.2-stable\flutter
+FLUTTER_APPLICATION_PATH=C:\Users\DURGA NANDA KISHORE\Downloads\cinehub
+>>>>>>> c8e610d8ff59d003fcc4b4d082206d9d67edd23a
+COCOAPODS_PARALLEL_CODE_SIGN=true
+FLUTTER_BUILD_DIR=build
+FLUTTER_BUILD_NAME=1.0.0
+FLUTTER_BUILD_NUMBER=1
+DART_OBFUSCATION=false
+TRACK_WIDGET_CREATION=true
+TREE_SHAKE_ICONS=false
+PACKAGE_CONFIG=.dart_tool/package_config.json
