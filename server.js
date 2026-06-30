@@ -379,6 +379,7 @@ app.post('/register', async (req, res) => {
   }
 });
 
+app.get('/', (req, res) => res.json({ ok: true, message: 'CineHub API is running!' }));
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 let ioInstance = null;
