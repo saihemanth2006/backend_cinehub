@@ -375,94 +375,41 @@ app.post('/register', async (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-// Start server after attempting MongoDB connection so queries don't race before ready
-function startServer() {
-  // create HTTP server so we can attach socket.io
-  const http = require('http');
-  const server = http.createServer(app);
-  // try to attach Socket.io if available
-  let io = null;
-  try {
-    const { Server } = require('socket.io');
-    io = new Server(server, { cors: { origin: '*' } });
-
-    io.on('connection', (socket) => {
-      console.log('socket connected:', socket.id);
-
-      socket.on('join_user', (userId) => {
-        try { socket.join(String(userId)); } catch (e) {}
-      });
-
-      socket.on('join_conversation', (conversationId) => {
-        try { socket.join(String(conversationId)); } catch (e) {}
-      });
-
-      socket.on('send_message', async (payload) => {
-        // payload: { conversationId, sender, text }
-        try {
-          const { conversationId, sender, text } = payload || {};
-          if (!conversationId || !sender || !text) return;
-          if (typeof Message !== 'undefined') {
-            const msg = await Message.create({ conversation: conversationId, sender, text });
-            if (typeof Conversation !== 'undefined') {
-              await Conversation.findByIdAndUpdate(conversationId, { lastMessage: text, updatedAt: Date.now() });
-              const conv = await Conversation.findById(conversationId).lean();
-              // emit to conversation room
-              io.to(String(conversationId)).emit('message', msg);
-              // also emit to participant user rooms
-              if (conv && conv.participants) {
-                conv.participants.forEach(pid => io.to(String(pid)).emit('message', msg));
-              }
-            } else {
-              io.to(String(conversationId)).emit('message', msg);
-            }
-          }
-        } catch (e) {
-          console.error('socket send_message error:', e && e.message ? e.message : e);
-        }
-      });
-    });
-  } catch (e) {
-    console.warn('Socket.io not available; realtime chat disabled.');
+let ioInstance = null;
+const ioProxy = {
+  to: (room) => ({
+    emit: (event, data) => {
+      if (ioInstance) ioInstance.to(room).emit(event, data);
+    }
+  }),
+  emit: (event, data) => {
+    if (ioInstance) ioInstance.emit(event, data);
   }
+};
 
-    try {
-      const socialRouterFactory = require('./routes/social');
-      const socialRouter = socialRouterFactory({ authenticateToken, models: { User, Follow, Post, Like, Comment, Conversation, Message }, io });
-      app.use('/api', socialRouter);
+// Mount routes synchronously so Vercel can serve them immediately
+try {
+  const socialRouterFactory = require('./routes/social');
+  const socialRouter = socialRouterFactory({ authenticateToken, models: { User, Follow, Post, Like, Comment, Conversation, Message }, io: ioProxy });
+  app.use('/api', socialRouter);
 
-      const jobsRouterFactory = require('./routes/jobs');
-      const jobsRouter = jobsRouterFactory({ authenticateToken, models: { Job } });
-      app.use('/api', jobsRouter);
+  const jobsRouterFactory = require('./routes/jobs');
+  const jobsRouter = jobsRouterFactory({ authenticateToken, models: { Job } });
+  app.use('/api', jobsRouter);
 
-      let CollabRequest = null;
-      try { CollabRequest = require('./models/CollabRequest'); } catch(e) {}
-      
-      if (CollabRequest) {
-        const collabRouterFactory = require('./routes/collab');
-        const collabRouter = collabRouterFactory({ authenticateToken, models: { CollabRequest } });
-        app.use('/api', collabRouter);
-      }
-    } catch (e) {
-      console.warn('Social routes not loaded at server start:', e && e.message ? e.message : e);
-    }
-
-  server.listen(port, () => {
-    console.log(`CineHub OTP backend listening on ${port}`);
-  });
-
-  server.on('error', (err) => {
-    if (err && err.code === 'EADDRINUSE') {
-      console.error(`Port ${port} is already in use. Another process is listening on this port.`);
-      console.error('Use: netstat -ano | findstr :' + port + '  and taskkill /PID <pid> /F to free the port.');
-      process.exit(1);
-    }
-    console.error('Server error:', err);
-    process.exit(1);
-  });
+  let CollabRequest = null;
+  try { CollabRequest = require('./models/CollabRequest'); } catch(e) {}
+  
+  if (CollabRequest) {
+    const collabRouterFactory = require('./routes/collab');
+    const collabRouter = collabRouterFactory({ authenticateToken, models: { CollabRequest } });
+    app.use('/api', collabRouter);
+  }
+} catch (e) {
+  console.warn('Routes not loaded at server start:', e && e.message ? e.message : e);
 }
 
-// If mongoose is available, try to connect first. Otherwise start server immediately.
+// Connect to MongoDB asynchronously
 if (mongoose) {
   const dbName = process.env.MONGODB_DBNAME || 'cine_hub';
   const connectOptions = {
@@ -477,27 +424,75 @@ if (mongoose) {
   mongoose.connect(mongoUri, connectOptions)
     .then(() => {
       console.log(`Connected to MongoDB database: ${dbName}`);
-      // Attach connection event listeners for resilience visibility
-      mongoose.connection.on('error', (err) => {
-        console.error('MongoDB connection error:', err && err.message ? err.message : err);
-      });
-      mongoose.connection.on('disconnected', () => {
-        console.warn('MongoDB disconnected. Mongoose will attempt to reconnect automatically.');
-      });
-      mongoose.connection.on('reconnected', () => {
-        console.log('MongoDB reconnected successfully.');
-      });
-      // social routes will be mounted when server starts so Socket.io can be injected
-      startServer();
+      mongoose.connection.on('error', (err) => console.error('MongoDB connection error:', err));
+      mongoose.connection.on('disconnected', () => console.warn('MongoDB disconnected.'));
+      mongoose.connection.on('reconnected', () => console.log('MongoDB reconnected.'));
     })
     .catch(err => {
       console.warn('MongoDB connection warning:', err && err.message ? err.message : err);
-      console.warn('The server will still start, but requests requiring MongoDB may fail.');
-      startServer();
     });
 } else {
   console.warn('Mongoose not available; starting server without DB connection.');
-  startServer();
+}
+
+// Start the HTTP server only if we are NOT on Vercel
+if (!process.env.VERCEL) {
+  const http = require('http');
+  const server = http.createServer(app);
+  
+  try {
+    const { Server } = require('socket.io');
+    ioInstance = new Server(server, { cors: { origin: '*' } });
+
+    ioInstance.on('connection', (socket) => {
+      console.log('socket connected:', socket.id);
+
+      socket.on('join_user', (userId) => {
+        try { socket.join(String(userId)); } catch (e) {}
+      });
+
+      socket.on('join_conversation', (conversationId) => {
+        try { socket.join(String(conversationId)); } catch (e) {}
+      });
+
+      socket.on('send_message', async (payload) => {
+        try {
+          const { conversationId, sender, text } = payload || {};
+          if (!conversationId || !sender || !text) return;
+          if (typeof Message !== 'undefined') {
+            const msg = await Message.create({ conversation: conversationId, sender, text });
+            if (typeof Conversation !== 'undefined') {
+              await Conversation.findByIdAndUpdate(conversationId, { lastMessage: text, updatedAt: Date.now() });
+              const conv = await Conversation.findById(conversationId).lean();
+              ioInstance.to(String(conversationId)).emit('message', msg);
+              if (conv && conv.participants) {
+                conv.participants.forEach(pid => ioInstance.to(String(pid)).emit('message', msg));
+              }
+            } else {
+              ioInstance.to(String(conversationId)).emit('message', msg);
+            }
+          }
+        } catch (e) {
+          console.error('socket send_message error:', e && e.message ? e.message : e);
+        }
+      });
+    });
+  } catch (e) {
+    console.warn('Socket.io not available; realtime chat disabled.');
+  }
+
+  server.listen(port, () => {
+    console.log(`CineHub OTP backend listening on ${port}`);
+  });
+
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use.`);
+      process.exit(1);
+    }
+    console.error('Server error:', err);
+    process.exit(1);
+  });
 }
 
 // Export the express app for Vercel serverless environment
